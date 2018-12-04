@@ -31,11 +31,12 @@
 #
 ############################################################################
 px4_add_module(
-	MODULE examples__px4_simple_app
-	MAIN px4_simple_app
-	STACK_MAIN 2000
-	SRCS
-		px4_simple_app.c
-	DEPENDS
-		platforms__common
-	)
+    MODULE modules__px4_uorb_subs
+    MAIN px4_uorb_subs
+    STACK_MAIN 2000 #程序堆栈大小
+    SRCS 
+        px4_uorb_subs.c
+        
+    DEPENDS
+        platforms__common
+    )

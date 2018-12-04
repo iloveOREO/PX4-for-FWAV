@@ -495,6 +495,69 @@ protected:
 	}
 };
 
+/**
+ * new test mavlink
+ */
+class MavlinkStreamMytest : public MavlinkStream
+{
+public:
+	const char *get_name() const
+	{
+		return MavlinkStreamMytest::get_name_static();
+	}
+
+	static const char *get_name_static()
+	{
+		return "TEST_TYPES";
+	} 
+
+	static uint16_t get_id_static()
+	{
+		return MAVLINK_MSG_ID_TEST_TYPES;
+	}
+
+	uint16_t get_id()
+	{
+		return get_id_static();
+	}
+
+	static MavlinkStream *new_instance(Mavlink *mavlink)
+	{
+		return new MavlinkStreamMytest(mavlink);
+	}
+
+	unsigned get_size()
+	{
+		return MAVLINK_MSG_ID_TEST_TYPES_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES;
+	}
+
+	bool const_rate()
+	{
+		return true;
+	}
+
+private:
+	/*do not allow top copying this class */
+	MavlinkStreamMytest(MavlinkStreamMytest &);
+	MavlinkStreamMytest &operator = (const MavlinkStreamMytest &);
+
+protected:
+	explicit MavlinkStreamMytest(Mavlink *mavlink) : MavlinkStream(mavlink)
+	{}
+
+	~MavlinkStreamMytest() {}
+
+	bool send(const hrt_abstime t)
+	{
+		mavlink_test_types_t test;
+		test.u8 = 9;
+		mavlink_msg_test_types_send_struct(_mavlink->get_channel(), &test);
+		
+		return true;
+	}
+
+};
+
 class MavlinkStreamSysStatus : public MavlinkStream
 {
 public:
@@ -4559,7 +4622,8 @@ static const StreamListItem streams_list[] = {
 	StreamListItem(&MavlinkStreamMountOrientation::new_instance, &MavlinkStreamMountOrientation::get_name_static, &MavlinkStreamMountOrientation::get_id_static),
 	StreamListItem(&MavlinkStreamHighLatency2::new_instance, &MavlinkStreamHighLatency2::get_name_static, &MavlinkStreamHighLatency2::get_id_static),
 	StreamListItem(&MavlinkStreamGroundTruth::new_instance, &MavlinkStreamGroundTruth::get_name_static, &MavlinkStreamGroundTruth::get_id_static),
-	StreamListItem(&MavlinkStreamPing::new_instance, &MavlinkStreamPing::get_name_static, &MavlinkStreamPing::get_id_static)
+	StreamListItem(&MavlinkStreamPing::new_instance, &MavlinkStreamPing::get_name_static, &MavlinkStreamPing::get_id_static),
+	StreamListItem(&MavlinkStreamMytest::new_instance, &MavlinkStreamMytest::get_name_static, &MavlinkStreamMytest::get_id_static)
 };
 
 const char *get_stream_name(const uint16_t msg_id)

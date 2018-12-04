@@ -64,6 +64,13 @@ set(config_module_list
 	#
 	drivers/distance_sensor/sf0x/sf0x_tests
 	drivers/test_ppm
+
+	#
+	# Test uORB
+	#
+	modules/px4_uorb_adver
+	modules/px4_uorb_subs
+	
 	#lib/rc/rc_tests
 	modules/commander/commander_tests
 	lib/controllib/controllib_test
@@ -136,7 +143,7 @@ set(config_module_list
 
 	# Tutorial code from
 	# https://px4.io/dev/px4_simple_app
-	examples/px4_simple_app
+	#examples/px4_simple_app
 
 	# Tutorial code from
 	# https://px4.io/dev/debug_values
@@ -148,4 +155,8 @@ set(config_module_list
 
 	# Hardware test
 	examples/hwtest
+
+	# For my example
+	examples/px4_simple_app
+
 )

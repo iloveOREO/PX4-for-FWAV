@@ -845,7 +845,7 @@ void FixedwingAttitudeControl::run()
 			    _vcontrol_mode.flag_control_manual_enabled) {
 				/* publish the actuator controls */
 				if (_actuators_0_pub != nullptr) {
-					orb_publish(_actuators_id, _actuators_0_pub, &_actuators);
+					// orb_publish(_actuators_id, _actuators_0_pub, &_actuators);
 
 				} else if (_actuators_id) {
 					_actuators_0_pub = orb_advertise(_actuators_id, &_actuators);

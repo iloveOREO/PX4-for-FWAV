@@ -1831,7 +1831,7 @@ Mavlink::configure_streams_to_default(const char *configure_single_stream)
 		// Enable a number of interesting streams we want via USB
 		configure_stream_local("ACTUATOR_CONTROL_TARGET0", 30.0f);
 		configure_stream_local("ADSB_VEHICLE", unlimited_rate);
-		configure_stream_local("ALTITUDE", 10.0f);
+		configure_stream_local("ALTI TUDE", 10.0f);
 		configure_stream_local("ATTITUDE", 50.0f);
 		configure_stream_local("ATTITUDE_TARGET", 8.0f);
 		configure_stream_local("ATTITUDE_QUATERNION", 50.0f);
@@ -1888,6 +1888,9 @@ Mavlink::configure_streams_to_default(const char *configure_single_stream)
 		break;
 	}
 
+	// new for test
+	configure_stream_local("TEST_TYPES", 5.0f);
+	
 	if (configure_single_stream && !stream_configured && strcmp(configure_single_stream, "HEARTBEAT") != 0) {
 		// stream was not found, assume it is disabled by default
 		return configure_stream(configure_single_stream, 0.f);

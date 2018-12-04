@@ -19,25 +19,26 @@ static const char *msg_label = "[lpe] ";	// rate of land detector correction
 
 BlockLocalPositionEstimator::BlockLocalPositionEstimator() :
 	// this block has no parent, and has name LPE
-	SuperBlock(nullptr, "LPE"),
-	ModuleParams(nullptr),
+	SuperBlock(nullptr, "LPE"),		//用于制定父类的名字和该block的名字，因为该block没有父类所以为空指针
+	ModuleParams(nullptr),			//c++里面的标准类，用去其他类使用配置参数
 	// subscriptions, set rate, add to list
 	_sub_armed(ORB_ID(actuator_armed), 1000 / 2, 0, &getSubscriptions()),
 	_sub_land(ORB_ID(vehicle_land_detected), 1000 / 2, 0, &getSubscriptions()),
 	_sub_att(ORB_ID(vehicle_attitude), 1000 / 100, 0, &getSubscriptions()),
 	// set flow max update rate higher than expected to we don't lose packets
-	_sub_flow(ORB_ID(optical_flow), 1000 / 100, 0, &getSubscriptions()),
+	_sub_flow(ORB_ID(optical_flow), 1000 / 100, 0, &getSubscriptions()),	//光流
 	// main prediction loop, 100 hz
-	_sub_sensor(ORB_ID(sensor_combined), 1000 / 100, 0, &getSubscriptions()),
+	_sub_sensor(ORB_ID(sensor_combined), 1000 / 100, 0, &getSubscriptions()),	//sensor_combined 订阅
 	// status updates 2 hz
-	_sub_param_update(ORB_ID(parameter_update), 1000 / 2, 0, &getSubscriptions()),
+	_sub_param_update(ORB_ID(parameter_update), 1000 / 2, 0, &getSubscriptions()),	//参数更新	
 	// gps 10 hz
-	_sub_gps(ORB_ID(vehicle_gps_position), 1000 / 10, 0, &getSubscriptions()),
+	_sub_gps(ORB_ID(vehicle_gps_position), 1000 / 10, 0, &getSubscriptions()),	//订阅GPS位置
 	// vision 50 hz
-	_sub_visual_odom(ORB_ID(vehicle_visual_odometry), 1000 / 50, 0, &getSubscriptions()),
+	_sub_visual_odom(ORB_ID(vehicle_visual_odometry), 1000 / 50, 0, &getSubscriptions()),	//订阅视觉里程计
 	// mocap 50 hz
-	_sub_mocap_odom(ORB_ID(vehicle_mocap_odometry), 1000 / 50, 0, &getSubscriptions()),
+	_sub_mocap_odom(ORB_ID(vehicle_mocap_odometry), 1000 / 50, 0, &getSubscriptions()),		//订阅动作捕捉里程计
 	// all distance sensors, 10 hz
+	// 订阅其他距离传感器，雷达等
 	_sub_dist0(ORB_ID(distance_sensor), 1000 / 10, 0, &getSubscriptions()),
 	_sub_dist1(ORB_ID(distance_sensor), 1000 / 10, 1, &getSubscriptions()),
 	_sub_dist2(ORB_ID(distance_sensor), 1000 / 10, 2, &getSubscriptions()),
@@ -49,20 +50,21 @@ BlockLocalPositionEstimator::BlockLocalPositionEstimator() :
 	_sub_airdata(ORB_ID(vehicle_air_data), 0, 0, &getSubscriptions()),
 
 	// publications
+	// 配置发布信息
 	_pub_lpos(ORB_ID(vehicle_local_position), -1, &getPublications()),
 	_pub_gpos(ORB_ID(vehicle_global_position), -1, &getPublications()),
 	_pub_est_status(ORB_ID(estimator_status), -1, &getPublications()),
 	_pub_innov(ORB_ID(ekf2_innovations), -1, &getPublications()),
 
 	// map projection
-	_map_ref(),
+	_map_ref(),		//地图规划，这里主要初始化经纬度
 
 	// flow gyro
-	_flow_gyro_x_high_pass(this, "FGYRO_HP"),
+	_flow_gyro_x_high_pass(this, "FGYRO_HP"),		// 设置flow gyro filter
 	_flow_gyro_y_high_pass(this, "FGYRO_HP"),
 
 	// stats
-	_baroStats(this, ""),
+	_baroStats(this, ""),		// 配置统计功能
 	_sonarStats(this, ""),
 	_lidarStats(this, ""),
 	_flowQStats(this, ""),
@@ -71,15 +73,16 @@ BlockLocalPositionEstimator::BlockLocalPositionEstimator() :
 	_gpsStats(this, ""),
 
 	// low pass
-	_xLowPass(this, "X_LP"),
+	_xLowPass(this, "X_LP"),		//配置低通滤波
 	// use same lp constant for agl
 	_aglLowPass(this, "X_LP"),
 
 	// delay
-	_xDelay(this, ""),
+	_xDelay(this, ""),		//配置延时
 	_tDelay(this, ""),
 
 	// misc
+	// 设置时间为0或者绝对时间
 	_polls(),
 	_timeStamp(hrt_absolute_time()),
 	_time_origin(0),
@@ -97,6 +100,7 @@ BlockLocalPositionEstimator::BlockLocalPositionEstimator() :
 	_time_last_target(0),
 
 	// reference altitudes
+	// 配置参考点的海拔与其他初始化参数
 	_altOrigin(0),
 	_altOriginInitialized(false),
 	_altOriginGlobal(false),
@@ -104,16 +108,16 @@ BlockLocalPositionEstimator::BlockLocalPositionEstimator() :
 	_gpsAltOrigin(0),
 
 	// status
-	_receivedGps(false),
-	_lastArmedState(false),
+	_receivedGps(false),		// 初始化gps false
+	_lastArmedState(false),		// 初始化armed状态 false
 
 	// masks
-	_sensorTimeout(UINT16_MAX),
+	_sensorTimeout(UINT16_MAX),		// 初始化传感器
 	_sensorFault(0),
 	_estimatorInitialized(0),
 
 	// sensor update flags
-	_flowUpdated(false),
+	_flowUpdated(false),		// 传感器参数状态全部置false
 	_gpsUpdated(false),
 	_visionUpdated(false),
 	_mocapUpdated(false),
@@ -123,19 +127,19 @@ BlockLocalPositionEstimator::BlockLocalPositionEstimator() :
 	_baroUpdated(false),
 
 	// sensor validation flags
-	_vision_xy_valid(false),
+	_vision_xy_valid(false),		// 传感器有效标志置false
 	_vision_z_valid(false),
 	_mocap_xy_valid(false),
 	_mocap_z_valid(false),
 
 	// sensor std deviations
-	_vision_eph(0.0),
+	_vision_eph(0.0),		// 传感器 std 微分置0
 	_vision_epv(0.0),
 	_mocap_eph(0.0),
 	_mocap_epv(0.0),
 
 	// local to global coversion related variables
-	_is_global_cov_init(false),
+	_is_global_cov_init(false),		// local 到 global转换参数初始化
 	_global_ref_timestamp(0.0),
 	_ref_lat(0.0),
 	_ref_lon(0.0),
@@ -147,7 +151,7 @@ BlockLocalPositionEstimator::BlockLocalPositionEstimator() :
 	_dist_subs[2] = &_sub_dist2;
 	_dist_subs[3] = &_sub_dist3;
 
-	// setup event triggering based on new flow messages to integrate
+	// setup event triggering based on new flow messages to integrate		// 配置轮循光流、参数和传感器信息
 	_polls[POLL_FLOW].fd = _sub_flow.getHandle();
 	_polls[POLL_FLOW].events = POLLIN;
 
@@ -179,6 +183,7 @@ BlockLocalPositionEstimator::BlockLocalPositionEstimator() :
 	       (_fusion.get() & FUSE_BARO) != 0);
 }
 
+// 动态方程， 本质为一个一阶微分方程
 Vector<float, BlockLocalPositionEstimator::n_x> BlockLocalPositionEstimator::dynamics(
 	float t,
 	const Vector<float, BlockLocalPositionEstimator::n_x> &x,
@@ -187,46 +192,49 @@ Vector<float, BlockLocalPositionEstimator::n_x> BlockLocalPositionEstimator::dyn
 	return _A * x + _B * u;
 }
 
+// update 函数流程
+// 1.先调用预测函数predict结合加速度计和飞机此时的姿态位置进行预测
+// 2.调用了各个模块的修正函数，比如mocapCorrect （在调用前有一些判断，如是否更新，是否启用，是否超时等）
 void BlockLocalPositionEstimator::update()
 {
 	// wait for a sensor update, check for exit condition every 100 ms
-	int ret = px4_poll(_polls, 3, 100);
+	int ret = px4_poll(_polls, 3, 100);		// poll函数轮循flow 、 param_update、sensor_combined， 轮循周期100ms
 
-	if (ret < 0) {
+	if (ret < 0) {		// 轮循超时
 		return;
 	}
 
-	uint64_t newTimeStamp = hrt_absolute_time();
-	float dt = (newTimeStamp - _timeStamp) / 1.0e6f;
+	uint64_t newTimeStamp = hrt_absolute_time();		// 获取绝对时间
+	float dt = (newTimeStamp - _timeStamp) / 1.0e6f;		// 计算程序更新周期(us)
 	_timeStamp = newTimeStamp;
 
 	// set dt for all child blocks
-	setDt(dt);
+	setDt(dt);		// 设置dt应用与所有子模块
 
 	// auto-detect connected rangefinders while not armed
-	bool armedState = _sub_armed.get().armed;
+	bool armedState = _sub_armed.get().armed;		// 检测飞机是否解锁， armed 解锁， disarmed 未解锁
 
-	if (!armedState && (_sub_lidar == nullptr || _sub_sonar == nullptr)) {
+	if (!armedState && (_sub_lidar == nullptr || _sub_sonar == nullptr)) {		// 未解锁并且雷达和超声订阅为空
 		// detect distance sensors
-		for (size_t i = 0; i < N_DIST_SUBS; i++) {
+		for (size_t i = 0; i < N_DIST_SUBS; i++) {		// N_DIST_SUBS = 4 , 检查各个传感器
 			uORB::Subscription<distance_sensor_s> *s = _dist_subs[i];
 
-			if (s == _sub_lidar || s == _sub_sonar) { continue; }
+			if (s == _sub_lidar || s == _sub_sonar) { continue; }	// 判断距离数据来自雷达或超声 则continue
 
-			if (s->updated()) {
+			if (s->updated()) {		// 如果数据不是雷达或超声， 更新距离数据
 				s->update();
 
-				if (s->get().timestamp == 0) { continue; }
+				if (s->get().timestamp == 0) { continue; }	// 首次获取数据， continue
 
 				if (s->get().type == distance_sensor_s::MAV_DISTANCE_SENSOR_LASER &&
 				    s->get().orientation == distance_sensor_s::ROTATION_DOWNWARD_FACING &&
-				    _sub_lidar == nullptr) {
-					_sub_lidar = s;
+				    _sub_lidar == nullptr) {		// 数据来自激光传感器 && 传感器向下 && 尚未订阅雷达
+					_sub_lidar = s;		// 激光传感器作为雷达订阅
 					mavlink_and_console_log_info(&mavlink_log_pub, "%sDownward-facing Lidar detected with ID %i", msg_label, i);
 
 				} else if (s->get().type == distance_sensor_s::MAV_DISTANCE_SENSOR_ULTRASOUND &&
 					   s->get().orientation == distance_sensor_s::ROTATION_DOWNWARD_FACING &&
-					   _sub_sonar == nullptr) {
+					   _sub_sonar == nullptr) {		// 超声， 将超声作为_sub_sonar的数据订阅
 					_sub_sonar = s;
 					mavlink_and_console_log_info(&mavlink_log_pub, "%sDownward-facing Sonar detected with ID %i", msg_label, i);
 				}
@@ -266,13 +274,14 @@ void BlockLocalPositionEstimator::update()
 	bool paramsUpdated = _sub_param_update.updated();
 	_baroUpdated = false;
 
-	if ((_fusion.get() & FUSE_BARO) && _sub_airdata.updated()) {
+	if ((_fusion.get() & FUSE_BARO) && _sub_airdata.updated()) {		// 如果气压计数据有更新，更新气压计
 		if (_sub_airdata.get().timestamp != _timeStampLastBaro) {
 			_baroUpdated = true;
 			_timeStampLastBaro = _sub_airdata.get().timestamp;
 		}
 	}
 
+	// 获取各传感器更新状态
 	_flowUpdated = (_fusion.get() & FUSE_FLOW) && _sub_flow.updated();
 	_gpsUpdated = (_fusion.get() & FUSE_GPS) && _sub_gps.updated();
 	_visionUpdated = (_fusion.get() & FUSE_VIS_POS) && _sub_visual_odom.updated();
@@ -283,7 +292,7 @@ void BlockLocalPositionEstimator::update()
 	bool targetPositionUpdated = _sub_landing_target_pose.updated();
 
 	// get new data
-	updateSubscriptions();
+	updateSubscriptions();		// 获取更新数据
 
 	// update parameters
 	if (paramsUpdated) {

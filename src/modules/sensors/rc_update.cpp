@@ -451,9 +451,9 @@ RCUpdate::rc_poll(const ParameterHandles &parameter_handles)
 
 			actuator_group_3.timestamp = rc_input.timestamp_last_signal;
 
-			actuator_group_3.control[0] = manual.y;
-			actuator_group_3.control[1] = manual.x;
-			actuator_group_3.control[2] = manual.r;
+			actuator_group_3.control[0] = manual.z;//manual.y;
+			actuator_group_3.control[1] = manual.z;//manual.x;
+			actuator_group_3.control[2] = manual.z;//manual.r;
 			actuator_group_3.control[3] = manual.z;
 			actuator_group_3.control[4] = manual.flaps;
 			actuator_group_3.control[5] = manual.aux1;

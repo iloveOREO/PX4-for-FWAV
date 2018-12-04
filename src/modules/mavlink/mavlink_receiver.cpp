@@ -1114,7 +1114,7 @@ MavlinkReceiver::handle_message_set_actuator_control_target(mavlink_message_t *m
 
 			/* Set duty cycles for the servos in the actuator_controls message */
 			for (size_t i = 0; i < 8; i++) {
-				actuator_controls.control[i] = set_actuator_control_target.controls[i];
+				actuator_controls.control[i] = 500;//set_actuator_control_target.controls[i];
 			}
 
 			switch (set_actuator_control_target.group_mlx) {

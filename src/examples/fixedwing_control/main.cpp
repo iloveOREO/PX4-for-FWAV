@@ -66,6 +66,8 @@
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/uORB.h>
 
+#include <unistd.h>
+
 /* Prototypes */
 
 /**
@@ -95,6 +97,8 @@ extern "C" __EXPORT int ex_fixedwing_control_main(int argc, char *argv[]);
  * Mainloop of daemon.
  */
 int fixedwing_control_thread_main(int argc, char *argv[]);
+
+int fixedwing_control_manual_thread_main(int argc, char *argv[]);
 
 /**
  * Print the correct usage.
@@ -142,7 +146,8 @@ void control_heading(const struct vehicle_global_position_s *pos, const struct p
 /* Variables */
 static bool thread_should_exit = false;		/**< Daemon exit flag */
 static bool thread_running = false;		/**< Daemon status flag */
-static int deamon_task;				/**< Handle of deamon task / thread */
+// static int deamon_task;				/**< Handle of deamon task / thread */
+static int deamon_task1;				/**< Handle of deamon task1 / manual thread */
 static struct params p;
 static struct param_handles ph;
 
@@ -402,6 +407,16 @@ int fixedwing_control_thread_main(int argc, char *argv[])
 				if (PX4_ISFINITE(manual_sp.z) &&
 				    (manual_sp.z >= 0.6f) &&
 				    (manual_sp.z <= 1.0f)) {
+
+						actuators.control[0] = 0.8f;
+						actuators.control[1] = 0.8f;
+						actuators.control[2] = 0.8f;
+						actuators.control[3] = 0.8f;
+				} else {
+						actuators.control[0] = 0.0f;
+						actuators.control[1] = 0.0f;
+						actuators.control[2] = 0.0f;
+						actuators.control[3] = 0.0f;
 				}
 
 				/* get the system status and the flight mode we're in */
@@ -436,6 +451,133 @@ int fixedwing_control_thread_main(int argc, char *argv[])
 	orb_publish(ORB_ID_VEHICLE_ATTITUDE_CONTROLS, actuator_pub, &actuators);
 
 	fflush(stdout);
+
+	return 0;
+}
+
+/* Another Thread */
+int fixedwing_control_manual_thread_main(int argc, char *argv[])
+{
+	warnx("[fixedwing control manual] started");
+
+	struct manual_control_setpoint_s manual_sp;
+	memset(&manual_sp, 0, sizeof(manual_sp));
+
+	struct actuator_controls_s actuators;
+	memset(&actuators, 0, sizeof(actuators));
+	
+
+	int manual_sp_sub = orb_subscribe(ORB_ID(manual_control_setpoint));
+
+	for (unsigned i = 0; i < actuator_controls_s::NUM_ACTUATOR_CONTROLS; i++) {
+		actuators.control[i] = 0.0f;
+	}
+
+	orb_advert_t actuator_pub = orb_advertise(ORB_ID_VEHICLE_ATTITUDE_CONTROLS, &actuators);
+	
+	uint16_t period_tick = 0;
+	uint16_t period = 0;
+	// uint16_t printime = 0;
+	int16_t ud_offset = 0;
+	int16_t lr_offset = 0;
+	int16_t manual_x = 0;
+	// int16_t manual_y = 0;
+	int16_t manual_z = 0;
+	int16_t manual_r = 0;
+	int16_t actuator_amp = 650;
+	int16_t actuator_l = 0;
+	int16_t actuator_r = 0;
+	int16_t actuator_lm = 0;
+	int16_t actuator_rm = 0;
+	int16_t actuator_lz = 0;
+	int16_t actuator_rz = 0;
+	
+	bool manual_sp_updated = false;
+
+	while (!thread_should_exit) {
+		period_tick++;
+		// printime ++;
+		
+
+		orb_check(manual_sp_sub, &manual_sp_updated);
+		if (manual_sp_updated) {
+			orb_copy(ORB_ID(manual_control_setpoint), manual_sp_sub, &manual_sp); 
+			manual_sp_updated = false;
+		}
+
+		if (PX4_ISFINITE(manual_sp.x) && 
+			PX4_ISFINITE(manual_sp.y) &&
+			PX4_ISFINITE(manual_sp.z) &&
+			PX4_ISFINITE(manual_sp.r)) {
+
+			manual_x = (int16_t)(manual_sp.x*1000);
+			// manual_y = (int16_t)(manual_sp.y*1000);
+			manual_z = (int16_t)(manual_sp.z*1000);
+			manual_r = (int16_t)(manual_sp.r*1000);
+			// printf("manual_sp.x = %d, ", manual_x);
+			// printf("manual_sp.y = %d, ", manual_y);
+			// printf("manual_sp.z = %d, ", manual_z);
+			// printf("manual_sp.r = %d\n, ", manual_r);
+
+			period = 100 - (int16_t)(manual_z / 11);
+			ud_offset = (int16_t)(manual_x / 4);
+			lr_offset = (int16_t)(manual_r / 3);
+
+			actuator_lm = actuator_lz - ud_offset - lr_offset;
+			actuator_rm = actuator_rz - ud_offset + lr_offset;
+			
+			if (manual_z < 110)	{
+				actuator_l = actuator_lm;
+				actuator_r = actuator_rm;
+			}
+			else {
+				if (period_tick < period / 2) {
+					actuator_l = actuator_lm - actuator_amp;
+					actuator_r = actuator_rm - actuator_amp;
+				}
+				else {
+					actuator_l = actuator_lm + actuator_amp;
+					actuator_r = actuator_rm + actuator_amp;
+				}
+			}
+
+
+			actuators.control[0] = (float)actuator_l / 1000.0f;
+			actuators.control[1] = (float)actuator_r / 1000.0f;
+
+			orb_publish(ORB_ID_VEHICLE_ATTITUDE_CONTROLS, actuator_pub, &actuators);
+
+			//if (printime % 20 == 0) 
+			// {
+			// 	printf("manual_sp.y = %d, ", manual_x);
+			// 	printf("manual_sp.z = %d, ", manual_z);
+			// 	printf("manual_sp.r = %d\n", manual_r);
+
+			// 	printf("period = %d", period);
+			// 	printf("ud_offset = %d ", ud_offset);
+			// 	printf("lr_offset = %d\n", lr_offset);
+			// 	printf("actuator_l = %d ", actuator_l);
+			// 	printf("actuator_r = %d\n", actuator_r);
+			// }
+		}
+
+			// uint64_t c_time = hrt_absolute_time();
+			// printf("current time is %llu\n", c_time);
+
+			if (period_tick >= period) 
+				period_tick = 0;
+
+			usleep(10*1000); //10ms
+	}
+
+	printf("[fixedwing_contorl_manual] exiting, stopping all motors.\n" );
+	thread_running = false;
+
+	for (unsigned i = 0; i < actuator_controls_s::NUM_ACTUATOR_CONTROLS; i++) {
+		actuators.control[i] = 0.0f;
+	}
+
+	orb_publish(ORB_ID_VEHICLE_ATTITUDE_CONTROLS, actuator_pub, &actuators);
 
 	return 0;
 }
@@ -476,12 +618,19 @@ int ex_fixedwing_control_main(int argc, char *argv[])
 		}
 
 		thread_should_exit = false;
-		deamon_task = px4_task_spawn_cmd("ex_fixedwing_control",
-						 SCHED_DEFAULT,
-						 SCHED_PRIORITY_MAX - 20,
-						 2048,
-						 fixedwing_control_thread_main,
-						 (argv) ? (char *const *)&argv[2] : (char *const *)nullptr);
+		// deamon_task = px4_task_spawn_cmd("ex_fixedwing_control",
+		// 				 SCHED_DEFAULT,
+		// 				 SCHED_PRIORITY_MAX - 20,
+		// 				 2048,
+		// 				 fixedwing_control_thread_main,
+		// 				 (argv) ? (char *const *)&argv[2] : (char *const *)nullptr);
+
+		deamon_task1 = px4_task_spawn_cmd("ex_fixedwing_control_output",
+							SCHED_DEFAULT,
+							SCHED_PRIORITY_MAX - 1,
+							2048,
+							fixedwing_control_manual_thread_main,
+							(argv) ? (char *const *)&argv[2] : (char *const *)nullptr);
 		thread_running = true;
 		return 0;
 	}
