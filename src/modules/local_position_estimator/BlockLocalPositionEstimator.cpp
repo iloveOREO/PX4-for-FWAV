@@ -302,20 +302,22 @@ void BlockLocalPositionEstimator::update()
 	}
 
 	// is xy valid?
-	bool vxy_stddev_ok = false;
+	bool vxy_stddev_ok = false;		// 判断X坐标和Y坐标数据的有效标志
 
+	// 判断 _P 中关于x、y方向的速度方差是否小于设定阈值，是则有效
 	if (math::max(_P(X_vx, X_vx), _P(X_vy, X_vy)) < _vxy_pub_thresh.get() * _vxy_pub_thresh.get()) {
 		vxy_stddev_ok = true;
 	}
 
-	if (_estimatorInitialized & EST_XY) {
+	// 判断测量XY方向的各个传感器是否都初始化了
+	if (_estimatorInitialized & EST_XY) {		// 如果都初始化了
 		// if valid and gps has timed out, set to not valid
-		if (!vxy_stddev_ok && (_sensorTimeout & SENSOR_GPS)) {
+		if (!vxy_stddev_ok && (_sensorTimeout & SENSOR_GPS)) {		// 如果vxy无效，并且gps超时，重置为未初始化状态
 			_estimatorInitialized &= ~EST_XY;
 		}
 
 	} else {
-		if (vxy_stddev_ok) {
+		if (vxy_stddev_ok) {		// 如果vxy_stddev有效 , 只要下面有一个传感器初始化了并且未超时的话，设置估计为初始化成功
 			if (!(_sensorTimeout & SENSOR_GPS)
 			    || !(_sensorTimeout & SENSOR_FLOW)
 			    || !(_sensorTimeout & SENSOR_VISION)
@@ -329,7 +331,7 @@ void BlockLocalPositionEstimator::update()
 	}
 
 	// is z valid?
-	bool z_stddev_ok = sqrtf(_P(X_z, X_z)) < _z_pub_thresh.get();
+	bool z_stddev_ok = sqrtf(_P(X_z, X_z)) < _z_pub_thresh.get();		// 判断z坐标数据有效性
 
 	if (_estimatorInitialized & EST_Z) {
 		// if valid and baro has timed out, set to not valid
@@ -344,7 +346,7 @@ void BlockLocalPositionEstimator::update()
 	}
 
 	// is terrain valid?
-	bool tz_stddev_ok = sqrtf(_P(X_tz, X_tz)) < _z_pub_thresh.get();
+	bool tz_stddev_ok = sqrtf(_P(X_tz, X_tz)) < _z_pub_thresh.get();		// 判断地形数据有效性， 地面的海拔高度反应地形
 
 	if (_estimatorInitialized & EST_TZ) {
 		if (!tz_stddev_ok) {
@@ -358,8 +360,10 @@ void BlockLocalPositionEstimator::update()
 	}
 
 	// check timeouts
-	checkTimeouts();
+	checkTimeouts();		// 检查超时情况
 
+	// 开始更新GPS数据
+	// 如果地图未初始化 并且 估计器初始化有效 将类的初始化列表中的经纬度(即前面的_map_ref)设置为初始化经纬度
 	// if we have no lat, lon initialize projection to LPE_LAT, LPE_LON parameters
 	if (!_map_ref.init_done && (_estimatorInitialized & EST_XY) && _fake_origin.get()) {
 		map_projection_init(&_map_ref,
@@ -374,20 +378,20 @@ void BlockLocalPositionEstimator::update()
 	}
 
 	// reinitialize x if necessary
-	bool reinit_x = false;
+	bool reinit_x = false;		//重新初始化x数据的标识符为false
 
-	for (size_t i = 0; i < n_x; i++) {
+	for (size_t i = 0; i < n_x; i++) {		// x数据总共有十个
 		// should we do a reinit
 		// of sensors here?
 		// don't want it to take too long
-		if (!PX4_ISFINITE(_x(i))) {
+		if (!PX4_ISFINITE(_x(i))) {		// 只要有一个x数据发散，就需要将重新初始化x数据的标识符设为true，然后跳出循环
 			reinit_x = true;
 			mavlink_and_console_log_info(&mavlink_log_pub, "%sreinit x, x(%d) not finite", msg_label, i);
 			break;
 		}
 	}
 
-	if (reinit_x) {
+	if (reinit_x) {		// 如果需要重新初始化x，将当前所有的x数据置0
 		for (size_t i = 0; i < n_x; i++) {
 			_x(i) = 0;
 		}
@@ -396,11 +400,11 @@ void BlockLocalPositionEstimator::update()
 	}
 
 	// force P symmetry and reinitialize P if necessary
-	bool reinit_P = false;
+	bool reinit_P = false;		// 同 reinit_x
 
 	for (size_t i = 0; i < n_x; i++) {
 		for (size_t j = 0; j <= i; j++) {
-			if (!PX4_ISFINITE(_P(i, j))) {
+			if (!PX4_ISFINITE(_P(i, j))) {		// 任意一个元素发散则将reinit_P置true， 后面将跳出循环
 				mavlink_and_console_log_info(&mavlink_log_pub,
 							     "%sreinit P (%d, %d) not finite", msg_label, i, j);
 				reinit_P = true;
@@ -408,7 +412,7 @@ void BlockLocalPositionEstimator::update()
 
 			if (i == j) {
 				// make sure diagonal elements are positive
-				if (_P(i, i) <= 0) {
+				if (_P(i, i) <= 0) {		// 对角线元素小于0则需要重新初始化P
 					mavlink_and_console_log_info(&mavlink_log_pub,
 								     "%sreinit P (%d, %d) negative", msg_label, i, j);
 					reinit_P = true;
@@ -417,7 +421,7 @@ void BlockLocalPositionEstimator::update()
 			} else {
 				// copy elememnt from upper triangle to force
 				// symmetry
-				_P(j, i) = _P(i, j);
+				_P(j, i) = _P(i, j);		// 将上三角复制到下三角，保持P对称
 			}
 
 			if (reinit_P) { break; }
@@ -427,19 +431,19 @@ void BlockLocalPositionEstimator::update()
 	}
 
 	if (reinit_P) {
-		initP();
+		initP();	// 重新初始化P
 	}
 
 	// do prediction
-	predict();
+	predict();		// 预测，即状态估计
 
-	// sensor corrections/ initializations
-	if (_gpsUpdated) {
-		if (_sensorTimeout & SENSOR_GPS) {
+	// sensor corrections/ initializations		// 下面结合传感器以及其他模块对预测值进行补偿校正
+	if (_gpsUpdated) {		// 如果gps有更新
+		if (_sensorTimeout & SENSOR_GPS) {		// 超时初始化
 			gpsInit();
 
 		} else {
-			gpsCorrect();
+			gpsCorrect();		// gps校正
 		}
 	}
 
@@ -515,32 +519,35 @@ void BlockLocalPositionEstimator::update()
 		}
 	}
 
+/**********************发布信息**************************/
 	if (_altOriginInitialized) {
 		// update all publications if possible
-		publishLocalPos();
-		publishEstimatorStatus();
-		_pub_innov.get().timestamp = _timeStamp;
-		_pub_innov.update();
+		publishLocalPos();		// 发布local position
+		publishEstimatorStatus();		// 发布十个状态量
+		_pub_innov.get().timestamp = _timeStamp;		// 发布时间
+		_pub_innov.update();		// 更新公告、订阅、发布的句柄
 
 		if ((_estimatorInitialized & EST_XY) && (_map_ref.init_done || _fake_origin.get())) {
-			publishGlobalPos();
+			publishGlobalPos();			// 发布global position
 		}
 	}
 
+	// 更新延迟信息
+	// 注意： 下面的dt_hist 是接收传感器信息的时间间隔，而前面在update 函数最开始定义的dt是执行update函数的时间周期，注意区分两者
 	// propagate delayed state, no matter what
 	// if state is frozen, delayed state still
 	// needs to be propagated with frozen state
-	float dt_hist = 1.0e-6f * (_timeStamp - _time_last_hist);
+	float dt_hist = 1.0e-6f * (_timeStamp - _time_last_hist);	// 本次的时间减去上一次记录的时间 (us * 10^-6 = s)
 
 	if (_time_last_hist == 0 ||
-	    (dt_hist > HIST_STEP)) {
-		_tDelay.update(Scalar<uint64_t>(_timeStamp));
+	    (dt_hist > HIST_STEP)) {	// 首次 或间隔大于 0.05s
+		_tDelay.update(Scalar<uint64_t>(_timeStamp));		
 		_xDelay.update(_x);
 		_time_last_hist = _timeStamp;
 	}
 }
 
-void BlockLocalPositionEstimator::checkTimeouts()
+void BlockLocalPositionEstimator::checkTimeouts()		// 检查是否超时
 {
 	baroCheckTimeout();
 	gpsCheckTimeout();
@@ -553,6 +560,9 @@ void BlockLocalPositionEstimator::checkTimeouts()
 	landingTargetCheckTimeout();
 }
 
+// 判断是否着陆
+// 判断方法： 根据vehicle_land_detected 这个toptic 
+// 这个topic 中有 bool landed、 bool freefall、 bool ground_contact、 bool maybe_landed四个布尔量
 bool BlockLocalPositionEstimator::landed()
 {
 	if (!(_fusion.get() & FUSE_LAND)) {
@@ -564,20 +574,21 @@ bool BlockLocalPositionEstimator::landed()
 	return _sub_land.get().landed || disarmed_not_falling;
 }
 
+// 发布本地位置
 void BlockLocalPositionEstimator::publishLocalPos()
 {
 	const Vector<float, n_x> &xLP = _xLowPass.getState();
 
 	// lie about eph/epv to allow visual odometry only navigation when velocity est. good
-	float evh = sqrtf(_P(X_vx, X_vx) + _P(X_vy, X_vy));
-	float evv = sqrtf(_P(X_vz, X_vz));
-	float eph = sqrtf(_P(X_x, X_x) + _P(X_y, X_y));
-	float epv = sqrtf(_P(X_z, X_z));
+	float evh = sqrtf(_P(X_vx, X_vx) + _P(X_vy, X_vy));		//求vx、vy的标准差
+	float evv = sqrtf(_P(X_vz, X_vz));		// 计算vx的标准差
+	float eph = sqrtf(_P(X_x, X_x) + _P(X_y, X_y));		// 计算水平位置误差的标准差
+	float epv = sqrtf(_P(X_z, X_z));		// 计算垂直位置误差的标准差
 
-	float eph_thresh = 3.0f;
-	float epv_thresh = 3.0f;
+	float eph_thresh = 3.0f;		// eph 的阈值
+	float epv_thresh = 3.0f;		// epv 的阈值
 
-	if (evh < _vxy_pub_thresh.get()) {
+	if (evh < _vxy_pub_thresh.get()) {		// 根据两个阈值限定eph和epv
 		if (eph > eph_thresh) {
 			eph = eph_thresh;
 		}
@@ -590,7 +601,7 @@ void BlockLocalPositionEstimator::publishLocalPos()
 	// publish local position
 	if (PX4_ISFINITE(_x(X_x)) && PX4_ISFINITE(_x(X_y)) && PX4_ISFINITE(_x(X_z)) &&
 	    PX4_ISFINITE(_x(X_vx)) && PX4_ISFINITE(_x(X_vy))
-	    && PX4_ISFINITE(_x(X_vz))) {
+	    && PX4_ISFINITE(_x(X_vz))) {		// 如果所有数据有效
 		_pub_lpos.get().timestamp = _timeStamp;
 
 		_pub_lpos.get().xy_valid = _estimatorInitialized & EST_XY;
@@ -598,77 +609,78 @@ void BlockLocalPositionEstimator::publishLocalPos()
 		_pub_lpos.get().v_xy_valid = _estimatorInitialized & EST_XY;
 		_pub_lpos.get().v_z_valid = _estimatorInitialized & EST_Z;
 
-		_pub_lpos.get().x = xLP(X_x);	// north
-		_pub_lpos.get().y = xLP(X_y);	// east
+		_pub_lpos.get().x = xLP(X_x);	// north 	// 发布x(北)方向的距离数据
+		_pub_lpos.get().y = xLP(X_y);	// east		// 发布y(东)方向的距离数据
 
-		if (_fusion.get() & FUSE_PUB_AGL_Z) {
-			_pub_lpos.get().z = -_aglLowPass.getState();	// agl
+		if (_fusion.get() & FUSE_PUB_AGL_Z) {		// 判断是要发布相对高度还是绝对高度
+			_pub_lpos.get().z = -_aglLowPass.getState();	// agl		// 发布相对地面的高度(agl) 因为坐标系为东北地，所以要加负号
 
 		} else {
-			_pub_lpos.get().z = xLP(X_z);	// down
+			_pub_lpos.get().z = xLP(X_z);	// down		// 发布绝对高度
 		}
 
-		_pub_gpos.get().yaw = matrix::Eulerf(matrix::Quatf(_sub_att.get().q)).psi();
+		_pub_gpos.get().yaw = matrix::Eulerf(matrix::Quatf(_sub_att.get().q)).psi();		// 发布偏航角速度
 
-		_pub_lpos.get().vx = xLP(X_vx);		// north
-		_pub_lpos.get().vy = xLP(X_vy);		// east
-		_pub_lpos.get().vz = xLP(X_vz);		// down
+		_pub_lpos.get().vx = xLP(X_vx);		// north		// 发布 x(北)方向的速度
+		_pub_lpos.get().vy = xLP(X_vy);		// east			// 发布 y(东)方向的速度
+		_pub_lpos.get().vz = xLP(X_vz);		// down			// 发布 z(下)方向的速度
 
 		// this estimator does not provide a separate vertical position time derivative estimate, so use the vertical velocity
-		_pub_lpos.get().z_deriv = xLP(X_vz);
+		_pub_lpos.get().z_deriv = xLP(X_vz);		// 发布z方向的位置变化率，用X_vz代替
 
 		_pub_lpos.get().ax = _u(U_ax);		// north
 		_pub_lpos.get().ay = _u(U_ay);		// east
 		_pub_lpos.get().az = _u(U_az);		// down
 
-		_pub_lpos.get().xy_global = _estimatorInitialized & EST_XY;
-		_pub_lpos.get().z_global = !(_sensorTimeout & SENSOR_BARO) && _altOriginGlobal;
-		_pub_lpos.get().ref_timestamp = _time_origin;
-		_pub_lpos.get().ref_lat = _map_ref.lat_rad * 180 / M_PI;
-		_pub_lpos.get().ref_lon = _map_ref.lon_rad * 180 / M_PI;
-		_pub_lpos.get().ref_alt = _altOrigin;
-		_pub_lpos.get().dist_bottom = _aglLowPass.getState();
-		_pub_lpos.get().dist_bottom_rate = -xLP(X_vz);
+		_pub_lpos.get().xy_global = _estimatorInitialized & EST_XY;		// 发布xy方向的global position 信息的有效性
+		_pub_lpos.get().z_global = !(_sensorTimeout & SENSOR_BARO) && _altOriginGlobal;		// 发布z方向的global position 信息的有效性
+		_pub_lpos.get().ref_timestamp = _time_origin;		// 发布更新gps时的时间点
+		_pub_lpos.get().ref_lat = _map_ref.lat_rad * 180 / M_PI;		// 将纬度信息转换为°的形式发布出去
+		_pub_lpos.get().ref_lon = _map_ref.lon_rad * 180 / M_PI;		// 将经度信息转换为°的形式发布出去
+		_pub_lpos.get().ref_alt = _altOrigin;		// 发布原点（参考点）的海拔高度
+		_pub_lpos.get().dist_bottom = _aglLowPass.getState();		// 发布飞机下表面到地面的距离信息
+		_pub_lpos.get().dist_bottom_rate = -xLP(X_vz);		// 发布向下的距离变化率
 		// we estimate agl even when we don't have terrain info
 		// if you are in terrain following mode this is important
 		// so that if terrain estimation fails there isn't a
 		// sudden altitude jump
-		_pub_lpos.get().dist_bottom_valid = _estimatorInitialized & EST_Z;
-		_pub_lpos.get().eph = eph;
-		_pub_lpos.get().epv = epv;
-		_pub_lpos.get().evh = evh;
-		_pub_lpos.get().evv = evv;
+		_pub_lpos.get().dist_bottom_valid = _estimatorInitialized & EST_Z;		// 发布向下距离信息的有效性
+		_pub_lpos.get().eph = eph;			// 发布水平位置误差的标准差
+		_pub_lpos.get().epv = epv;			// 发布垂直位置误差的标准差
+		_pub_lpos.get().evh = evh;			// 发布水平速度误差的标准差
+		_pub_lpos.get().evv = evv;			// 发布垂直速度误差的标准差
 		_pub_lpos.get().vxy_max = INFINITY;
 		_pub_lpos.get().vz_max = INFINITY;
 		_pub_lpos.get().hagl_min = INFINITY;
 		_pub_lpos.get().hagl_max = INFINITY;
-		_pub_lpos.update();
+		_pub_lpos.update();		// 更新发布
 	}
 }
 
+// 发布估计的状态
 void BlockLocalPositionEstimator::publishEstimatorStatus()
 {
-	_pub_est_status.get().timestamp = _timeStamp;
+	_pub_est_status.get().timestamp = _timeStamp;		// 发布时间点
 
 	for (size_t i = 0; i < n_x; i++) {
-		_pub_est_status.get().states[i] = _x(i);
+		_pub_est_status.get().states[i] = _x(i);		// 发布十个状态量
 	}
 
 	// matching EKF2 covariances indexing
-	// quaternion - not determined, as it is a position estimator
+	// quaternion - not determined, as it is a position estimator		//四元数 位置估计未用到
 	_pub_est_status.get().covariances[0] = NAN;
 	_pub_est_status.get().covariances[1] = NAN;
 	_pub_est_status.get().covariances[2] = NAN;
 	_pub_est_status.get().covariances[3] = NAN;
-	// linear velocity
+	// linear velocity		// 线性速度
 	_pub_est_status.get().covariances[4] = _P(X_vx, X_vx);
 	_pub_est_status.get().covariances[5] = _P(X_vy, X_vy);
 	_pub_est_status.get().covariances[6] = _P(X_vz, X_vz);
-	// position
+	// position		
 	_pub_est_status.get().covariances[7] = _P(X_x, X_x);
 	_pub_est_status.get().covariances[8] = _P(X_y, X_y);
 	_pub_est_status.get().covariances[9] = _P(X_z, X_z);
-	// gyro bias - not determined
+	// gyro bias - not determined			// 陀螺仪偏差 未用到
 	_pub_est_status.get().covariances[10] = NAN;
 	_pub_est_status.get().covariances[11] = NAN;
 	_pub_est_status.get().covariances[12] = NAN;
@@ -683,31 +695,32 @@ void BlockLocalPositionEstimator::publishEstimatorStatus()
 	}
 
 	// replacing the hor wind cov with terrain altitude covariance
-	_pub_est_status.get().covariances[22] = _P(X_tz, X_tz);
+	_pub_est_status.get().covariances[22] = _P(X_tz, X_tz);		// 用地形高度协方差代替水平风协方差
 	_pub_est_status.get().covariances[23] = NAN;
 
-	_pub_est_status.get().n_states = n_x;
-	_pub_est_status.get().health_flags = _sensorFault;
-	_pub_est_status.get().timeout_flags = _sensorTimeout;
-	_pub_est_status.get().pos_horiz_accuracy = _pub_gpos.get().eph;
-	_pub_est_status.get().pos_vert_accuracy = _pub_gpos.get().epv;
+	_pub_est_status.get().n_states = n_x;		// 发布状态量的个数
+	_pub_est_status.get().health_flags = _sensorFault;		// 发布传感器的健康状态
+	_pub_est_status.get().timeout_flags = _sensorTimeout;		// 发布超时flag
+	_pub_est_status.get().pos_horiz_accuracy = _pub_gpos.get().eph;		// 相对于原点的水平位移
+	_pub_est_status.get().pos_vert_accuracy = _pub_gpos.get().epv;		// 相对于原点的垂直位移
 
-	_pub_est_status.update();
+	_pub_est_status.update();		// 发布更新
 }
 
+// 发布 global position
 void BlockLocalPositionEstimator::publishGlobalPos()
 {
 	// publish global position
 	double lat = 0;
 	double lon = 0;
 	const Vector<float, n_x> &xLP = _xLowPass.getState();
-	map_projection_reproject(&_map_ref, xLP(X_x), xLP(X_y), &lat, &lon);
-	float alt = -xLP(X_z) + _altOrigin;
+	map_projection_reproject(&_map_ref, xLP(X_x), xLP(X_y), &lat, &lon);		// 将平面坐标转换为球坐标
+	float alt = -xLP(X_z) + _altOrigin;		// 绝对高度= 地面海拔 + 相对高度， 因为xLP(X_z)为负值，所以加负号转为正
 
 	// lie about eph/epv to allow visual odometry only navigation when velocity est. good
-	float evh = sqrtf(_P(X_vx, X_vx) + _P(X_vy, X_vy));
-	float eph = sqrtf(_P(X_x, X_x) + _P(X_y, X_y));
-	float epv = sqrtf(_P(X_z, X_z));
+	float evh = sqrtf(_P(X_vx, X_vx) + _P(X_vy, X_vy));		// 计算水平速度的标准偏差
+	float eph = sqrtf(_P(X_x, X_x) + _P(X_y, X_y));		// 计算水平位置的标准偏差
+	float epv = sqrtf(_P(X_z, X_z));		// 计算垂直位置的标准偏差
 
 	float eph_thresh = 3.0f;
 	float epv_thresh = 3.0f;
