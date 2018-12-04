@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # PX4 Drone Autopilot
 
 [![Releases](https://img.shields.io/github/release/PX4/Firmware.svg)](https://github.com/PX4/Firmware/releases) [![DOI](https://zenodo.org/badge/22634/PX4/Firmware.svg)](https://zenodo.org/badge/latestdoi/22634/PX4/Firmware)
@@ -105,3 +106,10 @@ Additional information about supported hardware can be found in [PX4 user Guide 
 ## Project Roadmap
 
 A high level project roadmap is available [here](https://www.dronecode.org/roadmap/).
+=======
+# PX4-for-FWAV
+The control code for an all servo driven ornithopter based on PX4.
+
+This project is forked from PX4/Firmware(https://github.com/PX4/Firmware).
+I have made some change for our flapping wing aerial vehicle.
+>>>>>>> 55ccab4650d95ba98b8e479f6a5f7c41a8224183
