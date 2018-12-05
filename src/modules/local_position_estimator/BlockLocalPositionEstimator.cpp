@@ -755,11 +755,12 @@ void BlockLocalPositionEstimator::publishGlobalPos()
 	}
 }
 
+// 初始化协方差矩阵P
 void BlockLocalPositionEstimator::initP()
 {
-	_P.setZero();
+	_P.setZero();		// 将P清零
 	// initialize to twice valid condition
-	_P(X_x, X_x) = 2 * EST_STDDEV_XY_VALID * EST_STDDEV_XY_VALID;
+	_P(X_x, X_x) = 2 * EST_STDDEV_XY_VALID * EST_STDDEV_XY_VALID;		// = 8
 	_P(X_y, X_y) = 2 * EST_STDDEV_XY_VALID * EST_STDDEV_XY_VALID;
 	_P(X_z, X_z) = 2 * EST_STDDEV_Z_VALID * EST_STDDEV_Z_VALID;
 	_P(X_vx, X_vx) = 2 * _vxy_pub_thresh.get() * _vxy_pub_thresh.get();
@@ -773,6 +774,7 @@ void BlockLocalPositionEstimator::initP()
 	_P(X_tz, X_tz) = 2 * EST_STDDEV_TZ_VALID * EST_STDDEV_TZ_VALID;
 }
 
+// 初始化 A、 B、 Q、 R
 void BlockLocalPositionEstimator::initSS()
 {
 	initP();
@@ -795,11 +797,12 @@ void BlockLocalPositionEstimator::initSS()
 	updateSSParams();
 }
 
+// 设置A
 void BlockLocalPositionEstimator::updateSSStates()
 {
 	// derivative of velocity is accelerometer acceleration
 	// (in input matrix) - bias (in body frame)
-	_A(X_vx, X_bx) = -_R_att(0, 0);
+	_A(X_vx, X_bx) = -_R_att(0, 0);		// 速度的微分就是加速度计的加速度信息减去偏差
 	_A(X_vx, X_by) = -_R_att(0, 1);
 	_A(X_vx, X_bz) = -_R_att(0, 2);
 
@@ -812,17 +815,18 @@ void BlockLocalPositionEstimator::updateSSStates()
 	_A(X_vz, X_bz) = -_R_att(2, 2);
 }
 
+// 设置R、Q
 void BlockLocalPositionEstimator::updateSSParams()
 {
 	// input noise covariance matrix
 	_R.setZero();
-	_R(U_ax, U_ax) = _accel_xy_stddev.get() * _accel_xy_stddev.get();
+	_R(U_ax, U_ax) = _accel_xy_stddev.get() * _accel_xy_stddev.get();		// 平方
 	_R(U_ay, U_ay) = _accel_xy_stddev.get() * _accel_xy_stddev.get();
 	_R(U_az, U_az) = _accel_z_stddev.get() * _accel_z_stddev.get();
 
 	// process noise power matrix
 	_Q.setZero();
-	float pn_p_sq = _pn_p_noise_density.get() * _pn_p_noise_density.get();
+	float pn_p_sq = _pn_p_noise_density.get() * _pn_p_noise_density.get();		// 平方
 	float pn_v_sq = _pn_v_noise_density.get() * _pn_v_noise_density.get();
 	_Q(X_x, X_x) = pn_p_sq;
 	_Q(X_y, X_y) = pn_p_sq;
@@ -846,25 +850,26 @@ void BlockLocalPositionEstimator::updateSSParams()
 	_Q(X_tz, X_tz) = pn_t_noise_density * pn_t_noise_density;
 }
 
+// 预测
 void BlockLocalPositionEstimator::predict()
 {
 	// get acceleration
-	_R_att = matrix::Dcm<float>(matrix::Quatf(_sub_att.get().q));
-	Vector3f a(_sub_sensor.get().accelerometer_m_s2);
+	_R_att = matrix::Dcm<float>(matrix::Quatf(_sub_att.get().q));		// q来自vehicle_attitude这个topic，是经过传感器数据融合后修正的q
+	Vector3f a(_sub_sensor.get().accelerometer_m_s2);		// a 向量里是加速度信息
 	// note, bias is removed in dynamics function
-	_u = _R_att * a;
-	_u(U_az) += CONSTANTS_ONE_G;	// add g
+	_u = _R_att * a;		// 转换到大地系
+	_u(U_az) += CONSTANTS_ONE_G;	// add g		// 地理坐标系下的z轴加速度是有重力加速度的，因此补偿上去
 
 	// update state space based on new states
-	updateSSStates();
+	updateSSStates();		// 更新系统状态空间转移矩阵，即A矩阵
 
 	// continuous time kalman filter prediction
 	// integrate runge kutta 4th order
 	// TODO move rk4 algorithm to matrixlib
 	// https://en.wikipedia.org/wiki/Runge%E2%80%93Kutta_methods
-	float h = getDt();
-	Vector<float, n_x> k1, k2, k3, k4;
-	k1 = dynamics(0, _x, _u);
+	float h = getDt();		// return _dt. 获取迭代步长
+	Vector<float, n_x> k1, k2, k3, k4;		// 这里可以看出用到了四阶的龙格库塔，k1到k4表示取中间的4个点的斜率
+	k1 = dynamics(0, _x, _u);		// dynamics 是现代控制理论中的动态方程，是一个一阶微分方程
 	k2 = dynamics(h / 2, _x + k1 * h / 2, _u);
 	k3 = dynamics(h / 2, _x + k2 * h / 2, _u);
 	k4 = dynamics(h, _x + k3 * h, _u);
@@ -888,12 +893,12 @@ void BlockLocalPositionEstimator::predict()
 		dx(X_tz) = 0;
 	}
 
-	// saturate bias
+	// saturate bias		// 计算偏差
 	float bx = dx(X_bx) + _x(X_bx);
 	float by = dx(X_by) + _x(X_by);
 	float bz = dx(X_bz) + _x(X_bz);
 
-	if (std::abs(bx) > BIAS_MAX) {
+	if (std::abs(bx) > BIAS_MAX) {		// 如果偏差大于最大，则以最大偏差 - 此次_x(X_bx)(以最大偏差剔除此次偏差作为偏差变化率)
 		bx = BIAS_MAX * bx / std::abs(bx);
 		dx(X_bx) = bx - _x(X_bx);
 	}
@@ -909,13 +914,14 @@ void BlockLocalPositionEstimator::predict()
 	}
 
 	// propagate
-	_x += dx;
+	_x += dx;		// _x就是下一时刻的预测值，接下来的任务就是对它进行校正
+	// 下面是p的一阶微分方程，解这个方程的时候用的是最简单的欧拉法  transpose-- 转置
 	Matrix<float, n_x, n_x> dP = (_A * _P + _P * _A.transpose() +
 				      _B * _R * _B.transpose() + _Q) * getDt();
 
 	// covariance propagation logic
 	for (size_t i = 0; i < n_x; i++) {
-		if (_P(i, i) > P_MAX) {
+		if (_P(i, i) > P_MAX) {		// 如果对角线元素大于P_MAX(10^6),则将该行和列的dp置0（不再累加）
 			// if diagonal element greater than max, stop propagating
 			dP(i, i) = 0;
 
@@ -927,8 +933,8 @@ void BlockLocalPositionEstimator::predict()
 	}
 
 	_P += dP;
-	_xLowPass.update(_x);
-	_aglLowPass.update(agl());
+	_xLowPass.update(_x);		// 将_x 低通处理后存在_xLowPass里的state中
+	_aglLowPass.update(agl());		// 将agl低通处理后存在_aglLowPass的state中
 }
 
 int BlockLocalPositionEstimator::getDelayPeriods(float delay, uint8_t *periods)

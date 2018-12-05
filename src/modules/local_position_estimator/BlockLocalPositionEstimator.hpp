@@ -2,46 +2,49 @@
 
 #include <px4_posix.h>
 #include <drivers/drv_hrt.h>
-#include <px4_module_params.h>
+#include <px4_module_params.h>		// C++ 里的base class， 用于其他的参数使用配置参数
 #include <controllib/blocks.hpp>
-#include <mathlib/mathlib.h>
+#include <mathlib/mathlib.h>		// 数学库
 #include <lib/ecl/geo/geo.h>
-#include <matrix/Matrix.hpp>
+#include <matrix/Matrix.hpp>		// 矩阵库
 
-// uORB Subscriptions
+// uORB Subscriptions		// 下面是本程序的订阅和发布的信息流  一些订阅的topic
 #include <uORB/Subscription.hpp>
-#include <uORB/topics/vehicle_status.h>
-#include <uORB/topics/actuator_armed.h>
-#include <uORB/topics/vehicle_land_detected.h>
-#include <uORB/topics/vehicle_control_mode.h>
-#include <uORB/topics/vehicle_attitude.h>
-#include <uORB/topics/vehicle_attitude_setpoint.h>
-#include <uORB/topics/optical_flow.h>
-#include <uORB/topics/sensor_combined.h>
-#include <uORB/topics/distance_sensor.h>
-#include <uORB/topics/parameter_update.h>
-#include <uORB/topics/manual_control_setpoint.h>
-#include <uORB/topics/vehicle_gps_position.h>
-#include <uORB/topics/landing_target_pose.h>
-#include <uORB/topics/vehicle_air_data.h>
-#include <uORB/topics/vehicle_odometry.h>
+#include <uORB/topics/vehicle_status.h>		// 飞机的状态
+#include <uORB/topics/actuator_armed.h>		// 执行机构的armed状态
+#include <uORB/topics/vehicle_land_detected.h>		// 检查是否着陆
+#include <uORB/topics/vehicle_control_mode.h>		// 控制模式
+#include <uORB/topics/vehicle_attitude.h>		// 飞机的姿态
+#include <uORB/topics/vehicle_attitude_setpoint.h>		// 设置飞机的姿态
+#include <uORB/topics/optical_flow.h>		// 光流
+#include <uORB/topics/sensor_combined.h>		// 传感器数据
+#include <uORB/topics/distance_sensor.h>		// 距离传感器
+#include <uORB/topics/parameter_update.h>		// 参数更新
+#include <uORB/topics/manual_control_setpoint.h>		// 手动控制下的一些设定值
+#include <uORB/topics/vehicle_gps_position.h>		// 飞行器GPS的位置
+#include <uORB/topics/landing_target_pose.h>		// 着陆点的相对位置
+#include <uORB/topics/vehicle_air_data.h>		// 空速计数据
+#include <uORB/topics/vehicle_odometry.h>		// odom 数据
 
-// uORB Publications
+// uORB Publications		// 发布的消息
 #include <uORB/Publication.hpp>
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_global_position.h>
-#include <uORB/topics/estimator_status.h>
+#include <uORB/topics/estimator_status.h>		// 估计器的状态，这里的估计器包括之前用于位置姿态估计的各种传感器以及其他模块
 #include <uORB/topics/ekf2_innovations.h>
 
 using namespace matrix;
 using namespace control;
 
-static const float DELAY_MAX = 0.5f;	// seconds
-static const float HIST_STEP = 0.05f;	// 20 hz
-static const float BIAS_MAX = 1e-1f;
+static const float DELAY_MAX = 0.5f;	// seconds		// 最大延迟0.5s
+static const float HIST_STEP = 0.05f;	// 20 hz		// 历史消息发布步长（频率）
+static const float BIAS_MAX = 1e-1f;		// 偏差上限
 static const size_t HIST_LEN = 10;	// DELAY_MAX / HIST_STEP;
 static const size_t N_DIST_SUBS = 4;
 
+// 统计学中的卡方检验：卡方检验就是统计样本的实际观测值与理论推断值之间的偏离程度，
+// 实际观测值与理论推断值之间的偏离程度就决定卡方值的大小，卡方值越大，越不符合；卡方值越小，偏差越小，越趋于符合，
+//　若两个值完全相等时，卡方值就为０，表示理论值完全符合。
 // for fault detection
 // chi squared distribution, false alarm probability 0.0001
 // see fault_table.py
@@ -59,14 +62,14 @@ class BlockLocalPositionEstimator : public control::SuperBlock, public ModulePar
 {
 // dynamics:
 //
-//	x(+) = A * x(-) + B * u(+)
-//	y_i = C_i*x
+//	x(+) = A * x(-) + B * u(+)		// 系统的状态方程
+//	y_i = C_i*x		// 观测方程
 //
 // kalman filter
 //
-//	E[xx'] = P
-//	E[uu'] = W
-//	E[y_iy_i'] = R_i
+//	E[xx'] = P		// 估计量的误差的协方差
+//	E[uu'] = W		// 系统噪声
+//	E[y_iy_i'] = R_i		// 系统噪声协方差矩阵
 //
 //	prediction
 //		x(+|-) = A*x(-|-) + B*u(+)
@@ -148,9 +151,9 @@ public:
 	};
 
 	// public methods
-	BlockLocalPositionEstimator();
-	void update();
-	virtual ~BlockLocalPositionEstimator() = default;
+	BlockLocalPositionEstimator();		// BlockLocalPositionEsitimator 类的构造函数
+	void update();		// 对飞机的状态先验估计值进行补偿校正
+	virtual ~BlockLocalPositionEstimator() = default;		// 析构函数
 
 private:
 	BlockLocalPositionEstimator(const BlockLocalPositionEstimator &) = delete;
@@ -159,23 +162,25 @@ private:
 	// methods
 	// ----------------------------
 	//
-	Vector<float, n_x> dynamics(
+	Vector<float, n_x> dynamics(		// 动态方程，形式为：x' = _A * x + _B * u，这是一个一阶微分方程，也就是描述系统状态空间的状态方程
+										//　区分kf中的 x_(k) = A*x_(k-1) + B*u_(k-1)
+										// 本程序中的状态估计用的是这个一阶微分方程结合龙格库塔，而不是用的kf中的第一个方程，因为这是一个连续系统
 		float t,
 		const Vector<float, n_x> &x,
 		const Vector<float, n_u> &u);
-	void initP();
-	void initSS();
-	void updateSSStates();
-	void updateSSParams();
+	void initP();		// 初始化状态协方差矩阵P
+	void initSS();		// 这个函数包括了下面的两个函数，执行这个函数的同时也就执行下面的两个
+	void updateSSStates();		// 设置A
+	void updateSSParams();		// 设置R、Q
 
 	// predict the next state
-	void predict();
+	void predict();		// 预测下一时刻的空间状态
 
 	// lidar
-	int  lidarMeasure(Vector<float, n_y_lidar> &y);
-	void lidarCorrect();
-	void lidarInit();
-	void lidarCheckTimeout();
+	int  lidarMeasure(Vector<float, n_y_lidar> &y);		// 数据测量
+	void lidarCorrect();		// 将之前用predict()预测的状态结合雷达数据进行校正
+	void lidarInit();		// 雷达的初始化
+	void lidarCheckTimeout();		// 检查超时
 
 	// sonar
 	int  sonarMeasure(Vector<float, n_y_sonar> &y);
@@ -184,16 +189,16 @@ private:
 	void sonarCheckTimeout();
 
 	// baro
-	int  baroMeasure(Vector<float, n_y_baro> &y);
+	int  baroMeasure(Vector<float, n_y_baro> &y);		// 气压计数据测量
 	void baroCorrect();
 	void baroInit();
 	void baroCheckTimeout();
 
 	// gps
-	int  gpsMeasure(Vector<double, n_y_gps> &y);
-	void gpsCorrect();
-	void gpsInit();
-	void gpsCheckTimeout();
+	int  gpsMeasure(Vector<double, n_y_gps> &y);		// 数据测量
+	void gpsCorrect();		// 将之前用predict()预测的状态结合GPS数据进行校正
+	void gpsInit();		// gps初始化
+	void gpsCheckTimeout();		// GPS检查超时
 
 	// flow
 	int  flowMeasure(Vector<float, n_y_flow> &y);
@@ -226,17 +231,17 @@ private:
 	void landingTargetCheckTimeout();
 
 	// timeouts
-	void checkTimeouts();
+	void checkTimeouts();		// 检查超时
 
 	// misc
-	inline float agl()
+	inline float agl()		// 用于检测是否着陆，着陆时agl=0
 	{
-		return _x(X_tz) - _x(X_z);
+		return _x(X_tz) - _x(X_z);		// _x(X_tz)是地面到原点的z，_x(X_z)是飞行器到原点的z
 	}
 	bool landed();
-	int getDelayPeriods(float delay, uint8_t *periods);
+	int getDelayPeriods(float delay, uint8_t *periods);		// 获取延迟时间长度
 
-	// publications
+	// publications		// 发布信息函数
 	void publishLocalPos();
 	void publishGlobalPos();
 	void publishEstimatorStatus();
@@ -271,7 +276,10 @@ private:
 	uORB::Publication<ekf2_innovations_s> _pub_innov;
 
 	// map projection
-	struct map_projection_reference_s _map_ref;
+	struct map_projection_reference_s _map_ref;		// 地图构建的参考。这个结构体在基于GPS的位置控制中有用到，
+													// 用于map_projection_project函数和map_projection_global函数，
+													// 前者将地理学坐标系(geographic coordinate system)中的点(球)投影到本地方位等距平面(XOY)中
+													// 后者是将本地方位等距平面中的点投影到地理学坐标系，也就是球面坐标和平面坐标之间的转换
 
 
 	DEFINE_PARAMETERS(
@@ -342,16 +350,17 @@ private:
 	)
 
 	// target mode paramters from landing_target_estimator module
+	// 与地面目标有关的参数，比如着陆点是固定还是移动的
 	enum TargetMode {
-		Target_Moving = 0,
-		Target_Stationary = 1
+		Target_Moving = 0,		// 目标移动状态
+		Target_Stationary = 1		// 目标为静止状态
 	};
 
-	// flow gyro filter
+	// flow gyro filter		// 滤波器 在block类里
 	BlockHighPass _flow_gyro_x_high_pass;
 	BlockHighPass _flow_gyro_y_high_pass;
 
-	// stats
+	// stats		// 传感器或者其他模块的统计量
 	BlockStats<float, n_y_baro> _baroStats;
 	BlockStats<float, n_y_sonar> _sonarStats;
 	BlockStats<float, n_y_lidar> _lidarStats;
@@ -369,7 +378,7 @@ private:
 	BlockDelay<float, n_x, 1, HIST_LEN> _xDelay;
 	BlockDelay<uint64_t, 1, 1, HIST_LEN> _tDelay;
 
-	// misc
+	// misc		// 一些时间变量
 	px4_pollfd_struct_t _polls[3];
 	uint64_t _timeStamp;
 	uint64_t _time_origin;
@@ -387,19 +396,19 @@ private:
 	uint64_t _time_last_target;
 
 	// reference altitudes
-	float _altOrigin;
-	bool _altOriginInitialized;
+	float _altOrigin;		// 原点的海拔
+	bool _altOriginInitialized;		// 原点海拔初始化
 	bool _altOriginGlobal; // true when the altitude of the origin is defined wrt a global reference frame
-	float _baroAltOrigin;
-	float _gpsAltOrigin;
+	float _baroAltOrigin;		// 原点的气压高度
+	float _gpsAltOrigin;		// 原点的gps高度
 
 	// status
 	bool _receivedGps;
 	bool _lastArmedState;
 
 	// masks
-	uint16_t _sensorTimeout;
-	uint16_t _sensorFault;
+	uint16_t _sensorTimeout;		// 传感器超时时间
+	uint16_t _sensorFault;		// 传感器故障
 	uint8_t _estimatorInitialized;
 
 	// sensor update flags
@@ -432,14 +441,14 @@ private:
 	float _ref_alt;
 
 	// state space
-	Vector<float, n_x>  _x;	// state vector
-	Vector<float, n_u>  _u;	// input vector
-	Matrix<float, n_x, n_x>  _P;	// state covariance matrix
+	Vector<float, n_x>  _x;	// state vector		// 状态向量
+	Vector<float, n_u>  _u;	// input vector		// 系统输入量
+	Matrix<float, n_x, n_x>  _P;	// state covariance matrix		// 状态协方差矩阵
 
-	matrix::Dcm<float> _R_att;
+	matrix::Dcm<float> _R_att;		// 旋转矩阵，为了与下面的输入协方差矩阵_R区别，于是加了_att
 
-	Matrix<float, n_x, n_x>  _A;	// dynamics matrix
-	Matrix<float, n_x, n_u>  _B;	// input matrix
-	Matrix<float, n_u, n_u>  _R;	// input covariance
-	Matrix<float, n_x, n_x>  _Q;	// process noise covariance
+	Matrix<float, n_x, n_x>  _A;	// dynamics matrix		// 动态矩阵， 也叫系统矩阵
+	Matrix<float, n_x, n_u>  _B;	// input matrix			// 输入矩阵
+	Matrix<float, n_u, n_u>  _R;	// input covariance		// 输入的噪声协方差矩阵
+	Matrix<float, n_x, n_x>  _Q;	// process noise covariance		// 过程噪声的协方差矩阵
 };
